@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('name');
             $table->integer('capacity');
             $table->text('description')->nullable();
-            $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->enum('status', ['active', 'inactive'])->default('inactive');
             $table->timestamps();
         });
     }

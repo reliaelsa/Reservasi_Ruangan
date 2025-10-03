@@ -14,10 +14,10 @@ class RoomRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nama_ruangan' => 'required|string|max:255',
-            'kapasitas'    => 'nullable|integer|min:1',
-            'deskripsi'    => 'nullable|string',
-            'status'       => 'required|in:aktif,non-aktif', // default di DB = non-aktif
+            'name' => 'required|string|max:255',
+            'capacity'    => 'nullable|integer|min:1',
+            'description'    => 'nullable|string',
+            //'status'       => 'required|in:aktif,non-aktif', // default di DB = non-aktif
         ];
     }
 }

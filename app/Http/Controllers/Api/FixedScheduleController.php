@@ -17,13 +17,20 @@ class FixedScheduleController extends Controller
     {
         $request->validate([
             'room_id'     => 'required|exists:rooms,id',
-            'day_of_week' => 'required|string',
+            'day_of_week' => 'required|string|in:Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday',
             'start_time'  => 'required|date_format:H:i',
             'end_time'    => 'required|date_format:H:i|after:start_time',
             'description' => 'nullable|string',
         ]);
 
-        $schedule = FixedSchedule::create($request->all());
+        $schedule = FixedSchedule::create([
+            'room_id'     => $request->room_id,
+            'day_of_week' => $request->day_of_week,
+            'start_time'  => $request->start_time,
+            'end_time'    => $request->end_time,
+            'description' => $request->description,
+        ]);
+
         return response()->json($schedule, 201);
     }
 
@@ -35,13 +42,21 @@ class FixedScheduleController extends Controller
     public function update(Request $request, FixedSchedule $fixedSchedule)
     {
         $request->validate([
-            'day_of_week' => 'required|string',
+            'room_id'     => 'required|exists:rooms,id',
+            'day_of_week' => 'required|string|in:Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday',
             'start_time'  => 'required|date_format:H:i',
             'end_time'    => 'required|date_format:H:i|after:start_time',
             'description' => 'nullable|string',
         ]);
 
-        $fixedSchedule->update($request->all());
+        $fixedSchedule->update([
+            'room_id'     => $request->room_id,
+            'day_of_week' => $request->day_of_week,
+            'start_time'  => $request->start_time,
+            'end_time'    => $request->end_time,
+            'description' => $request->description,
+        ]);
+
         return response()->json($fixedSchedule);
     }
 

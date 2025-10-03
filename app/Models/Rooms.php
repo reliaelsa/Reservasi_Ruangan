@@ -16,11 +16,13 @@ class rooms extends Model
         'description',
         'status', // default di DB = "non-aktif"
     ];
-
+        protected $attributes = [
+        'status' => 'inactive',
+    ];
     // Relasi ke Reservations
     public function reservations()
     {
-        return $this->hasMany(Reservations::class);
+        return $this->hasMany(Reservations::class,'room_id');
     }
 
     // Relasi ke FixedSchedules

@@ -10,58 +10,58 @@ class RoomSeeder extends Seeder
 {
     public function run(): void
     {
-        $rooms = [
-            [
-                'nama_ruangan' => 'Ruang Rapat 1',
-                'kapasitas'    => 20,
-                'deskripsi'    => 'Ruang rapat untuk meeting kecil',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Rapat 2',
-                'kapasitas'    => 25,
-                'deskripsi'    => 'Ruang rapat dengan proyektor',
-            ],
-            [
-                'nama_ruangan' => 'Aula Utama',
-                'kapasitas'    => 100,
-                'deskripsi'    => 'Ruang besar untuk acara dan seminar',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Training',
-                'kapasitas'    => 40,
-                'deskripsi'    => 'Ruang pelatihan karyawan',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Diskusi A',
-                'kapasitas'    => 10,
-                'deskripsi'    => 'Ruang kecil untuk diskusi tim',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Diskusi B',
-                'kapasitas'    => 12,
-                'deskripsi'    => 'Ruang diskusi dengan papan tulis',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Presentasi',
-                'kapasitas'    => 50,
-                'deskripsi'    => 'Ruang untuk presentasi dan demo produk',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Kreatif',
-                'kapasitas'    => 15,
-                'deskripsi'    => 'Ruang dengan desain santai untuk brainstorming',
-            ],
-            [
-                'nama_ruangan' => 'Ruang IT Support',
-                'kapasitas'    => 8,
-                'deskripsi'    => 'Ruang kerja tim IT support',
-            ],
-            [
-                'nama_ruangan' => 'Ruang Manajemen',
-                'kapasitas'    => 30,
-                'deskripsi'    => 'Ruang meeting manajemen perusahaan',
-            ],
-        ];
+       $rooms = [
+    [
+        'nama_ruangan' => 'Tokyo Innovation Room',
+        'kapasitas'    => 20,
+        'deskripsi'    => 'Modern meeting room for creative ideas',
+    ],
+    [
+        'nama_ruangan' => 'Paris Meeting Room',
+        'kapasitas'    => 25,
+        'deskripsi'    => 'Elegant meeting space with presentation facilities',
+    ],
+    [
+        'nama_ruangan' => 'New York Hall',
+        'kapasitas'    => 100,
+        'deskripsi'    => 'Large hall for seminars and international events',
+    ],
+    [
+        'nama_ruangan' => 'London Training Room',
+        'kapasitas'    => 40,
+        'deskripsi'    => 'Classic yet professional training room',
+    ],
+    [
+        'nama_ruangan' => 'Seoul Discussion Room',
+        'kapasitas'    => 10,
+        'deskripsi'    => 'Small room designed for focused team discussions',
+    ],
+    [
+        'nama_ruangan' => 'Dubai Boardroom',
+        'kapasitas'    => 12,
+        'deskripsi'    => 'Exclusive boardroom with a luxurious atmosphere',
+    ],
+    [
+        'nama_ruangan' => 'Eiffel Presentation Room',
+        'kapasitas'    => 50,
+        'deskripsi'    => 'Spacious presentation room with an iconic touch',
+    ],
+    [
+        'nama_ruangan' => 'Amazon Creative Space',
+        'kapasitas'    => 15,
+        'deskripsi'    => 'Relaxed creative space inspired by nature',
+    ],
+    [
+        'nama_ruangan' => 'Silicon Valley IT Room',
+        'kapasitas'    => 8,
+        'deskripsi'    => 'Tech-focused room with a startup vibe',
+    ],
+    [
+        'nama_ruangan' => 'Berlin Management Room',
+        'kapasitas'    => 30,
+        'deskripsi'    => 'Strategic meeting room for management discussions',
+    ],
+];
 
         foreach ($rooms as $room) {
             Rooms::create([

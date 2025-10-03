@@ -2,12 +2,13 @@
 
 namespace App\Services\Admin;
 
-use App\Models\Reservation;
 use App\Models\Reservations;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
 use App\Mail\ReservationApproveMail;
 use App\Mail\ReservationRejectedMail;
 use App\Mail\ReservationCancelByOverlapMail;
+use App\Http\Resources\Karyawan\ReservationResource;
 
 class ReservationService
 {
@@ -17,6 +18,40 @@ class ReservationService
             ->orderBy('tanggal', 'desc')
             ->orderBy('waktu_mulai')
             ->get();
+    }
+
+    /**
+     * Buat reservasi baru
+     * Kalau ada yang sudah approved dan bentrok → auto rejected
+     */
+    public function createReservation(array $data)
+    {
+        return DB::transaction(function () use ($data) {
+            // cari reservasi bentrok yang sudah approved
+            $conflict = Reservations::where('room_id', $data['room_id'])
+                ->where('tanggal', $data['tanggal'])
+                ->where('status', 'approved')
+                ->where(function ($q) use ($data) {
+                    $q->where('waktu_mulai', '<', $data['waktu_selesai'])
+                      ->where('waktu_selesai', '>', $data['waktu_mulai']);
+                })
+                ->exists();
+
+            if ($conflict) {
+                // langsung tolak karena bentrok
+                $data['status'] = 'rejected';
+                $data['reason'] = 'Ditolak otomatis karena user sudah punya reservasi pada waktu ini.';
+            } else {
+                // default pending
+                $data['status'] = 'pending';
+            }
+
+            $reservation = Reservations::create($data);
+
+            return response()->json([
+                'data' => new ReservationResource($reservation)
+            ]);
+        });
     }
 
     public function approve($id)
@@ -33,54 +68,65 @@ class ReservationService
     {
         $reservation = Reservations::findOrFail($id);
         $reservation->delete();
-
         return true;
     }
 
+    /**
+     * Update status reservasi
+     * Kalau approve → auto reject semua yang bentrok
+     */
     public function updateStatus($id, string $status, $reason = null)
     {
         $reservation = Reservations::with(['user', 'room'])->findOrFail($id);
 
-        $reservation->update(['status' => $status]);
-
-        // ✅ Jika disetujui
         if ($status === 'approved') {
-            // kirim email approved
+            DB::transaction(function () use ($reservation) {
+                $reservation->update(['status' => 'approved']);
+
+                if ($reservation->user) {
+                    Mail::to($reservation->user->email)
+                        ->queue(new ReservationApproveMail($reservation));
+                }
+
+                // cari pending lain yang bentrok
+                $overlaps = Reservations::where('room_id', $reservation->room_id)
+                    ->where('hari', $reservation->hari)
+                    ->where('id', '!=', $reservation->id)
+                    ->whereIn('status', ['pending'])
+                    ->where(function ($q) use ($reservation) {
+                        $q->where('waktu_mulai', '<', $reservation->waktu_selesai)
+                          ->where('waktu_selesai', '>', $reservation->waktu_mulai);
+                    })
+                    ->get();
+
+                foreach ($overlaps as $overlap) {
+                    $overlap->update([
+                        'status' => 'rejected',
+                        'reason' => 'Ditolak otomatis karena user sudah punya reservasi pada waktu ini.'
+                    ]);
+
+                    if ($overlap->user) {
+                        Mail::to($overlap->user->email)
+                            ->queue(new ReservationCancelByOverlapMail($overlap, $reservation));
+                    }
+                }
+            });
+        }
+
+        if ($status === 'rejected') {
+            $reservation->update([
+                'status' => 'rejected',
+                'reason' => $reason ?? 'Ditolak oleh admin'
+            ]);
+
             if ($reservation->user) {
                 Mail::to($reservation->user->email)
-                    ->send(new ReservationApproveMail($reservation));
-            }
-
-            // ✅ Cancel semua pending yang bentrok di hari yg sama
-            $overlaps = Reservations::where('room_id', $reservation->room_id)
-                ->where('hari', $reservation->hari)   // tambahkan filter hari
-                ->where('id', '!=', $reservation->id)
-                ->where('status', 'pending')
-                ->where(function ($q) use ($reservation) {
-                    $q->whereBetween('waktu_mulai', [$reservation->waktu_mulai, $reservation->waktu_selesai])
-                      ->orWhereBetween('waktu_selesai', [$reservation->waktu_mulai, $reservation->waktu_selesai])
-                      ->orWhere(function ($q2) use ($reservation) {
-                          $q2->where('waktu_mulai', '<=', $reservation->waktu_mulai)
-                             ->where('waktu_selesai', '>=', $reservation->waktu_selesai);
-                      });
-                })
-                ->get();
-
-            foreach ($overlaps as $overlap) {
-                $overlap->update(['status' => 'canceled']);
-                if ($overlap->user) {
-                    Mail::to($overlap->user->email)
-                        ->send(new ReservationCancelByOverlapMail($overlap, $reservation));
-                }
+                    ->queue(new ReservationRejectedMail($reservation, $reason));
             }
         }
 
-        // ✅ Jika ditolak
-        if ($status === 'rejected' && $reservation->user) {
-            Mail::to($reservation->user->email)
-                ->send(new ReservationRejectedMail($reservation, $reason));
-        }
-
-        return $reservation;
+        return response()->json([
+            'data' => new ReservationResource($reservation)
+        ]);
     }
 }

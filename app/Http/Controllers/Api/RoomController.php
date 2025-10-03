@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\RoomRequest;
 use Illuminate\Http\Request;
 use App\Models\Rooms;
 
@@ -13,14 +14,14 @@ class RoomController extends Controller
         return response()->json(Rooms::all());
     }
 
-    public function store(Request $request)
+    public function store(RoomRequest $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'capacity' => 'required|integer|min:1',
-            'deskripsi' => 'nullable|string',
-            'status' => 'required|boolean',
-        ]);
+        // $request->validate([
+        //     'name' => 'required|string|max:255',
+        //     'capacity' => 'required|integer|min:1',
+        //     'deskripsi' => 'nullable|string',
+        //     'status' => 'required|boolean',
+        // ]);
 
         $room = Rooms::create($request->all());
         return response()->json($room, 201);
@@ -31,14 +32,14 @@ class RoomController extends Controller
         return response()->json($room);
     }
 
-    public function update(Request $request, Rooms $room)
+    public function update(RoomRequest $request, Rooms $room)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'capacity' => 'required|integer|min:1',
-            'deskripsi' => 'nullable|string',
-            'status' => 'required|boolean',
-        ]);
+        // $request->validate([
+        //     'name' => 'required|string|max:255',
+        //     'capacity' => 'required|integer|min:1',
+        //     'deskripsi' => 'nullable|string',
+        //     'status' => 'required|boolean',
+        // ]);
 
         $room->update($request->all());
         return response()->json($room);

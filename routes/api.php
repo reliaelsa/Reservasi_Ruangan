@@ -10,7 +10,7 @@ use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\FixedScheduleController;
 use App\Http\Controllers\Api\User\UserController;
 use App\Http\Controllers\Api\Admin\ReservationController as AdminReservationController;
-use App\Http\Controllers\Api\Karyawan\ReservationController as KaryawanReservationController;
+use App\Http\Controllers\Api\ReservationController as KaryawanReservationController;
 
 /**
  * ===============================

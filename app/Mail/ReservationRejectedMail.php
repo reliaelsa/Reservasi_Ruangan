@@ -6,7 +6,7 @@ use App\Models\Reservations;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
-use App\Models\Reservation;
+
 
 class ReservationRejectedMail extends Mailable
 {
