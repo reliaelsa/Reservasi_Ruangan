@@ -3,162 +3,283 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Karyawan\ReservationStoreRequest;
 use App\Models\Reservations;
-use App\Models\FixedSchedule;
 use Illuminate\Http\Request;
+use App\Models\FixedSchedule;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\ReservationCreatedMail;
-use App\Mail\ReservationApproveMail;
-use App\Mail\ReservationRejectedMail;
+use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\ReservationsExport;
+use Illuminate\Support\Facades\DB;
 
 class ReservationController extends Controller
 {
-    public function index()
+    // =========================================================================
+    // 📊 STATISTIK RESERVASI BULANAN (Dashboard)
+    // =========================================================================
+    public function monthlyStatistics()
     {
-        $user = Auth::user();
+        $currentYear = date('Y');
 
-        if ($user->hasRole('admin')) {
-            $reservations = Reservations::with('room', 'user')->get();
-        } else {
-            $reservations = $user->reservations()->with('room')->get();
+        $rawMonthlyData = DB::table('reservations')
+            ->select(
+                DB::raw('MONTH(date) as bulan'),
+                DB::raw('COUNT(id) as jumlah')
+            )
+            ->whereYear('date', $currentYear)
+            ->whereIn('status', ['approved', 'pending'])
+            ->groupBy('bulan')
+            ->orderBy('bulan')
+            ->get();
+
+        $monthlyCounts = array_fill(1, 12, 0);
+
+        foreach ($rawMonthlyData as $data) {
+            $monthlyCounts[$data->bulan] = (int) $data->jumlah;
         }
 
-        return response()->json($reservations);
+        return response()->json(array_values($monthlyCounts));
     }
 
-    public function store(ReservationStoreRequest $request)
+    // =========================================================================
+    // 📦 EXPORT RESERVASI KE EXCEL
+    // =========================================================================
+    public function export(Request $request)
     {
-        $data = $request->validated();
-        $data['user_id'] = Auth::id();
-        $data['status'] = 'pending';
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
 
-        // ✅ default reason
-        $data['reason'] = $request->input('reason', 'Tidak ada alasan diberikan.');
-
-        // ✅ Parse waktu mulai & selesai
-        $mulai   = Carbon::parse($data['date'] . ' ' . $data['start_time']);
-        $selesai = Carbon::parse($data['date'] . ' ' . $data['end_time']);
-
-        if ($mulai >= $selesai) {
-            throw ValidationException::withMessages([
-                'waktu' => 'Waktu mulai harus lebih awal dari waktu selesai.'
-            ]);
+        if (!$startDate || !$endDate) {
+            return response()->json(['message' => 'Tanggal mulai dan tanggal akhir wajib diisi.'], 400);
         }
 
-        $data['start_time'] = $mulai->format('H:i:s');
-        $data['end_time']   = $selesai->format('H:i:s');
-
-        // ✅ Ambil nama hari (Monday, Tuesday, dst)
-        $dayOfWeek = Carbon::parse($data['date'])->format('l');
-        $data['day_of_week'] = $dayOfWeek;
-
-        // ✅ Cek bentrok dengan FixedSchedule (pakai day_of_week)
-        $conflictFixed = FixedSchedule::where('room_id', $data['room_id'])
-            ->where('day_of_week', $dayOfWeek)
-            ->where(function ($q) use ($mulai, $selesai) {
-                $q->whereBetween('start_time', [$mulai->format('H:i:s'), $selesai->format('H:i:s')])
-                  ->orWhereBetween('end_time', [$mulai->format('H:i:s'), $selesai->format('H:i:s')])
-                  ->orWhere(function ($q2) use ($mulai, $selesai) {
-                      $q2->where('start_time', '<=', $mulai->format('H:i:s'))
-                         ->where('end_time', '>=', $selesai->format('H:i:s'));
-                  });
-            })
-            ->exists();
-
-        if ($conflictFixed) {
-            $data['status'] = 'rejected';
-            $data['reason'] = 'Ditolak otomatis karena bentrok dengan jadwal tetap.';
-        }
-
-        // ✅ Cek bentrok dengan reservasi lain (approved saja)
-        $conflictReservation = Reservations::where('room_id', $data['room_id'])
-            ->whereDate('date', $data['date'])
-            ->where(function ($q) use ($mulai, $selesai) {
-                $q->whereBetween('start_time', [$mulai->format('H:i:s'), $selesai->format('H:i:s')])
-                  ->orWhereBetween('end_time', [$mulai->format('H:i:s'), $selesai->format('H:i:s')])
-                  ->orWhere(function ($q2) use ($mulai, $selesai) {
-                      $q2->where('start_time', '<=', $mulai->format('H:i:s'))
-                         ->where('end_time', '>=', $selesai->format('H:i:s'));
-                  });
-            })
-            ->where('status', 'approved')
-            ->exists();
-
-        if ($conflictReservation) {
-            $data['status'] = 'rejected';
-            $data['reason'] = 'Ditolak otomatis karena sudah ada reservasi lain pada waktu ini.';
-        }
-
-        // ✅ Simpan reservasi
-        $reservation = Reservations::create($data);
-
-        Mail::to('admin1@example.com')->send(new ReservationCreatedMail($reservation));
-        return response()->json([
-            'data' => [
-                'id'          => $reservation->id,
-                'room'        => [
-                    'id'   => $reservation->room->id,
-                    'name' => $reservation->room->name,
-                ],
-                'date'        => Carbon::parse($reservation->date)->format('Y-m-d'),
-                'day_of_week' => $reservation->day_of_week ?? $dayOfWeek,
-                'start_time'  => $reservation->start_time,
-                'end_time'    => $reservation->end_time,
-                'status'      => $reservation->status,
-                'reason'      => $reservation->reason,
-                'created_at'  => $reservation->created_at->format('Y-m-d H:i:s'),
-            ]
-        ], 201);
+        $fileName = 'reservations_' . $startDate . '_to_' . $endDate . '.xlsx';
+        return Excel::download(new ReservationsExport($startDate, $endDate), $fileName);
     }
 
-    public function show(Reservations $reservation)
+    // =========================================================================
+    // 📋 GET /api/reservations
+    // =========================================================================
+    public function index(Request $request)
     {
-        $this->authorizeUser($reservation);
-        return response()->json($reservation->load('room', 'user'));
-    }
-
-    public function update(Request $request, Reservations $reservation)
-    {
-        $this->authorizeUser($reservation);
-
         $request->validate([
-            'start_time' => 'required|date_format:H:i:s',
-            'end_time'   => 'required|date_format:H:i:s|after:start_time',
-            'reason'     => 'nullable|string',
+            'date' => 'nullable|date',
+            'day_of_week' => 'nullable|string',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'status' => 'nullable|in:pending,approved,rejected,cancelled',
         ]);
 
-        $reservation->update($request->only(['start_time', 'end_time', 'reason']));
-        return response()->json($reservation);
+        $query = Reservations::with(['user', 'room']);
+
+        if ($request->filled('date')) $query->whereDate('date', $request->date);
+        if ($request->filled('day_of_week')) $query->where('hari', $request->day_of_week);
+        if ($request->filled('start_time')) $query->where('start_time', '>=', $request->start_time);
+        if ($request->filled('end_time')) $query->where('end_time', '<=', $request->end_time);
+        if ($request->filled('status')) $query->where('status', $request->status);
+
+        if (Auth::user()->role === 'user') $query->where('user_id', Auth::id());
+
+        $reservations = $query->orderBy('date', 'desc')->orderBy('start_time', 'desc')->get();
+
+        $data = $reservations->map(function ($reservation) {
+            return [
+                'id' => $reservation->id,
+                'user' => [
+                    'id' => $reservation->user->id,
+                    'name' => $reservation->user->name,
+                    'email' => $reservation->user->email,
+                ],
+                'room' => [
+                    'id' => $reservation->room->id,
+                    'nama_ruangan' => $reservation->room->name,
+                ],
+                'tanggal' => $reservation->date,
+                'day_of_week' => $reservation->hari,
+                'start_time' => date('H:i', strtotime($reservation->start_time)),
+                'end_time' => date('H:i', strtotime($reservation->end_time)),
+                'status' => $reservation->status,
+                'reason' => $reservation->reason,
+                'created_at' => $reservation->created_at->format('Y-m-d H:i:s'),
+                'updated_at' => $reservation->updated_at->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Reservation list retrieved successfully.',
+            'data' => $data
+        ]);
     }
 
-    public function destroy(Reservations $reservation)
+    // =========================================================================
+    // 📝 POST /api/reservations
+    // =========================================================================
+    public function store(Request $request)
     {
-        $this->authorizeUser($reservation);
-        $reservation->update(['status' => 'canceled']);
-        return response()->json(['message' => 'Reservation cancelled']);
-    }
+        $validated = $request->validate([
+            'room_id' => 'required|exists:rooms,id',
+            'date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i|after:start_time',
+            'reason' => 'nullable|string'
+        ]);
 
-    public function approve(Reservations $reservation)
-    {
-        $reservation->update(['status' => 'approved']);
-        return response()->json($reservation);
-    }
+        $today = now();
+        $reservationDate = Carbon::parse($request->date);
+        $maxBookingDate = $today->copy()->addDays(30);
 
-    public function reject(Reservations $reservation)
-    {
-        $reservation->update(['status' => 'rejected']);
-        return response()->json($reservation);
-    }
-
-    private function authorizeUser(Reservations $reservation)
-    {
-        $user = Auth::user();
-        if ($user->role !== 'admin' && $reservation->user_id !== $user->id) {
-            abort(403, 'Unauthorized');
+        if ($reservationDate->lt($today->startOfDay())) {
+            return response()->json(['status' => 'error', 'message' => 'Tanggal reservasi tidak boleh di masa lalu.'], 422);
         }
+
+        if ($reservationDate->gt($maxBookingDate)) {
+            return response()->json(['status' => 'error', 'message' => 'Reservasi hanya bisa dilakukan maksimal 30 hari sebelum tanggal meeting.'], 422);
+        }
+
+        $start = Carbon::createFromFormat('H:i', $request->start_time);
+        $end = Carbon::createFromFormat('H:i', $request->end_time);
+        if ($start->diffInHours($end) > 3) {
+            return response()->json(['status' => 'error', 'message' => 'Durasi meeting maksimal adalah 3 jam.'], 422);
+        }
+
+        $fixed = FixedSchedule::where('room_id', $request->room_id)
+            ->where('day_of_week', $reservationDate->dayOfWeek)
+            ->where(function ($q) use ($request) {
+                $q->whereBetween('start_time', [$request->start_time, $request->end_time])
+                  ->orWhereBetween('end_time', [$request->start_time, $request->end_time]);
+            })->exists();
+
+        if ($fixed) {
+            return response()->json(['status' => 'error', 'message' => 'Jadwal bentrok dengan fixed schedule.'], 400);
+        }
+
+        $overlap = Reservations::where('room_id', $request->room_id)
+            ->whereDate('date', $request->date)
+            ->whereIn('status', ['pending', 'approved'])
+            ->where(function ($q) use ($request) {
+                $q->whereBetween('start_time', [$request->start_time, $request->end_time])
+                  ->orWhereBetween('end_time', [$request->start_time, $request->end_time]);
+            })->exists();
+
+        if ($overlap) {
+            return response()->json(['status' => 'error', 'message' => 'Waktu yang dipilih sudah dipesan.'], 400);
+        }
+
+        $data = [
+            'room_id' => $request->room_id,
+            'user_id' => Auth::id(),
+            'date' => $request->date,
+            'start_time' => $request->start_time,
+            'end_time' => $request->end_time,
+            'reason' => $request->reason,
+            'status' => 'pending',
+            'hari' => $reservationDate->translatedFormat('l'),
+        ];
+
+        $reservation = Reservations::create($data);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservation created successfully.', 'data' => $reservation], 201);
+    }
+
+    // =========================================================================
+    // 🔍 SHOW /api/reservations/{id}
+    // =========================================================================
+    public function show($id)
+    {
+        $reservation = Reservations::with(['user', 'room'])->findOrFail($id);
+        return response()->json(['status' => 'success', 'data' => $reservation]);
+    }
+
+    // =========================================================================
+    // ❌ CANCEL (User)
+    // =========================================================================
+    public function cancel(Request $request, $id)
+    {
+        $reservation = Reservations::findOrFail($id);
+        if ($reservation->user_id != Auth::id()) {
+            return response()->json(['status' => 'error', 'message' => 'Unauthorized.'], 403);
+        }
+
+        if ($reservation->status === 'approved') {
+            return response()->json(['status' => 'error', 'message' => 'Reservasi yang sudah disetujui tidak dapat dibatalkan oleh user.'], 403);
+        }
+
+        $reservation->update([
+            'status' => 'cancelled',
+            'reason' => $request->reason ?? $reservation->reason
+        ]);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservasi dibatalkan.', 'data' => $reservation]);
+    }
+
+    // =========================================================================
+    // ✅ APPROVE (Admin)
+    // =========================================================================
+    public function approve($id)
+    {
+        $reservation = Reservations::with(['user', 'room'])->findOrFail($id);
+
+        Reservations::where('room_id', $reservation->room_id)
+            ->whereDate('date', $reservation->date)
+            ->where('id', '!=', $id)
+            ->whereIn('status', ['pending', 'approved'])
+            ->update(['status' => 'cancelled']);
+
+        $reservation->update(['status' => 'approved']);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservasi disetujui.', 'data' => $reservation]);
+    }
+
+    // =========================================================================
+    // 🚫 REJECT (Admin)
+    // =========================================================================
+    public function reject($id)
+    {
+        $reservation = Reservations::findOrFail($id);
+        $reservation->update(['status' => 'rejected']);
+
+        return response()->json(['status' => 'success', 'message' => 'Reservation rejected successfully.']);
+    }
+
+    // =========================================================================
+    // 🔁 UPDATE STATUS (Admin - fleksibel)
+    // =========================================================================
+    public function updateStatus(Request $request, $id, $action)
+    {
+        $reservation = Reservations::find($id);
+        if (!$reservation) {
+            return response()->json(['message' => 'Reservasi tidak ditemukan'], 404);
+        }
+
+        $allowedActions = ['approved', 'rejected', 'pending', 'canceled'];
+        if (!in_array($action, $allowedActions)) {
+            return response()->json(['message' => 'Status tidak valid'], 400);
+        }
+
+        $reservation->status = $action;
+
+        // ✅ PERBAIKAN: Ubah dari 'alasan' menjadi 'reason'
+        if ($action === 'rejected') {
+            $reservation->reason = $request->alasan ?? '-';
+        }
+
+        $reservation->save();
+
+        return response()->json([
+            'message' => "Status reservasi berhasil diubah menjadi {$action}",
+            'data' => $reservation
+        ]);
+    }
+
+    // =========================================================================
+    // 🗑️ DELETE RESERVATION
+    // =========================================================================
+    public function destroy($id)
+    {
+        $reservation = Reservations::findOrFail($id);
+        $reservation->delete();
+
+        return response()->json(['status' => 'success', 'message' => 'Reservation deleted successfully.']);
     }
 }

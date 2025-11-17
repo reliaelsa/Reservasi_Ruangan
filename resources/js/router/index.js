@@ -1,17 +1,39 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory } from "vue-router";
 
-import Home from '@/pages/Home.vue';
+import AdminLayout from "@/layouts/AdminLayout.vue";
+import Home from "@/pages/Home.vue";
+import Login from "@/pages/Login.vue";
+import Register from "@/pages/Register.vue";
+import Dashboard from "@/pages/Dashboard.vue";
 
 const routes = [
     {
-        path: '/home',
-        name: 'Home',
+        path: "/",
+        name: "Home",
         component: Home,
-        // meta: {
-        //     title: 'Home',
-        //     layout: 'AppLayout',
-        // }
-    }
+    },
+    {
+        path: "/login",
+        name: "Login",
+        component: Login,
+    },
+    {
+        path: "/register",
+        name: "Register",
+        component: Register,
+    },
+    {
+        path: "/admin",
+        name: "Admin",
+        component: AdminLayout,
+        children: [
+            {
+                path: "/dashboard",
+                name: "dashboard",
+                component: Dashboard,
+            },
+        ],
+    },
 ];
 
 const router = createRouter({

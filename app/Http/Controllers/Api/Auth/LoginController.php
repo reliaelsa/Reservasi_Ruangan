@@ -30,6 +30,12 @@ class LoginController extends Controller
             return response()->json(['message' => 'Email atau password salah.'], 401);
         }
 
+        // Revoke all previous tokens for this user to avoid multiple active tokens
+        // $tokens = $result['user']->tokens;
+        // foreach ($tokens as $token) {
+        //     $token->revoke();
+        // }
+
         return new LoginResource($result);
     }
 }

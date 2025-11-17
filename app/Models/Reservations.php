@@ -5,18 +5,20 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\User;
-use App\Models\rooms;
+use App\Models\Rooms;
 use Carbon\Carbon;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class Reservations extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $fillable = [
         'user_id',
         'room_id',
-        'date',        // ✅ sesuai migration
-        'hari',        // ✅ info tambahan, nullable
+        'date',
+        'hari',
         'start_time',
         'end_time',
         'status',
@@ -27,45 +29,24 @@ class Reservations extends Model
         'status' => 'pending',
     ];
 
-    // protected static function booted()
-    // {
-    //     static::creating(function ($reservation) {
-    //         if (!empty($reservation->date) && !empty($reservation->start_time)) {
-    //             $datetime = Carbon::parse($reservation->date . ' ' . $reservation->start_time);
-    //             $reservation->day = $datetime->translatedFormat('l');
-    //             // ->locale('id')
-    //         }
-    //     });
-    // }
-
-    // public function getStartTimeAttribute()
-    // {
-    //     return $this->attributes['start_time'] ?? null;
-    // }
-
     protected $casts = [
-        'date'       => 'date', // ✅ cast jadi tanggal saja
-        // 'waktu_mulai'   => 'string',     // ✅ simpan sebagai string (format H:i)
-        // 'waktu_selesai' => 'string',     // ✅ simpan sebagai string (format H:i)
+        'date' => 'date',
     ];
 
     public function user()
     {
-        return $this->belongsTo(User::class,'user_id');
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function room()
     {
-        return $this->belongsTo(Rooms::class,'room_id');
+        return $this->belongsTo(Rooms::class, 'room_id');
     }
 
-    /**
-     * Scope untuk mencari overlapping reservation
-     */
     public function scopeOverlapping($query, $roomId, $mulai, $selesai)
     {
         return $query->where('room_id', $roomId)
-            ->whereIn('status', ['pending','approved'])
+            ->whereIn('status', ['pending', 'approved'])
             ->where(function ($q) use ($mulai, $selesai) {
                 $q->whereBetween('start_time', [$mulai, $selesai])
                   ->orWhereBetween('end_time', [$mulai, $selesai])
@@ -73,6 +54,17 @@ class Reservations extends Model
                       $q2->where('start_time', '<=', $mulai)
                          ->where('end_time', '>=', $selesai);
                   });
+            });
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->useLogName('reservation')
+            ->logFillable()
+            ->logOnlyDirty()
+            ->setDescriptionForEvent(function (string $eventName) {
+                return "Reservation has been {$eventName}";
             });
     }
 }

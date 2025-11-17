@@ -15,13 +15,11 @@ class LoginServices
             return null;
         }
 
-        $token = $user->createToken('Token akses API')->accessToken;
+        $token = $user->createToken('API Token')->plainTextToken;
 
-        return[
+        return [
             'user' => $user,
-            'token' => $token
+            'token' => $token,
         ];
-
-
     }
 }
